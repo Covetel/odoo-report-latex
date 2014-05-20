@@ -303,7 +303,7 @@ class LatexParser(report_sxw):
             del helper
         bin = self.get_lib(cursor, uid)
         pdf = self.generate_pdf(bin, report_xml, tex, resource_path=resource_path)
-        return (pdf, 'pdf')
+        return (pdf, 'ps')
 
 
     def create(self, cursor, uid, ids, data, context=None):
