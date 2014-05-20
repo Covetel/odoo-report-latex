@@ -96,7 +96,7 @@ class LatexParser(report_sxw):
                     defpath.append(os.getcwd())
                     if tools.config['root_path']:
                         defpath.append(os.path.dirname(tools.config['root_path']))
-                pdflatex_path = tools.which('pdflatex', path=os.pathsep.join(defpath))
+                pdflatex_path = tools.which('latex', path=os.pathsep.join(defpath))
             except IOError:
                 pdflatex_path = None
 
@@ -113,11 +113,15 @@ class LatexParser(report_sxw):
         """Call latex in order to generate pdf"""
         tmp_dir = tempfile.mkdtemp()
         if comm_path:
-            command = [comm_path]
+            comm_to_dvi = [comm_path]
         else:
-            command = ['pdflatex']
-        command.extend(['-output-directory', tmp_dir])
-        command.extend(['-interaction', 'batchmode'])
+            comm_to_dvi = ['latex']
+        comm_to_dvi.extend(['-output-directory', tmp_dir])
+        comm_to_dvi.extend(['-interaction', 'batchmode'])
+
+        defpath = os.environ.get('PATH', os.defpath).split(os.pathsep)
+        comm_to_ps = [tools.which('dvips', path=os.pathsep.join(defpath))]
+        comm_to_ps.extend(['-t', 'letter'])
 
         count = 0
 
@@ -125,12 +129,18 @@ class LatexParser(report_sxw):
         tex_filename = prefix_filename +'.tex'
         pdf_filename = prefix_filename +'.pdf'
         log_filename = prefix_filename +'.log'
+        ps_filename  = prefix_filename +'.ps'
+        dvi_filename = prefix_filename +'.dvi'
         tex_file = file(os.path.join(tmp_dir, tex_filename), 'w')
+        
         count += 1
         tex_file.write(tex)
         tex_file.close()
-        command.append(tex_filename)
-
+        comm_to_dvi.append(tex_filename)
+        
+        comm_to_ps.append(os.path.join(tmp_dir, dvi_filename))
+        comm_to_ps.extend(['-o', os.path.join(tmp_dir, ps_filename)])
+        
         env = os.environ
         if resource_path:
             env.update(dict(TEXINPUTS="%s:" % resource_path))
@@ -144,26 +154,38 @@ class LatexParser(report_sxw):
             _logger.info("Source LaTex File: %s" % os.path.join(tmp_dir, tex_filename))
             while rerun:
                 try:
-                    _logger.info("Run count: %i" % countrerun)
-                    output = subprocess.check_output(command, stderr=stderr_fd, env=env)
+                    _logger.info("Run count: %i, %s" % (countrerun,comm_to_dvi))
+                    output = subprocess.check_output(comm_to_dvi, stderr=stderr_fd, env=env)
                 except subprocess.CalledProcessError, r:
                     messages, rerun = self.parse_log(tmp_dir, log_filename)
                     for m in messages:
                         _logger.error("{message}:{lineno}:{line}".format(**m))
                     raise osv.except_osv(_('Latex error'),
-                          _("The command 'pdflatex' failed with error. Read logs."))
+                          _("The comm_to_dvi 'pdflatex' failed with error. Read logs."))
                 messages, rerun = self.parse_log(tmp_dir, log_filename)
                 countrerun = countrerun + 1
 
+            try:
+                _logger.info("executing dvips command %s", comm_to_ps)
+                output = subprocess.check_output(comm_to_ps, stderr=stderr_fd, env=env)
+            except subprocess.CalledProcessError, r:
+                # are the same line above
+                _logger.error("%s", r)
+                messages, rerun = self.parse_log(tmp_dir, log_filename)
+                for m in messages:
+                    _logger.error("{message}:{lineno}:{line}".format(**m))
+                    raise osv.except_osv(_('Latex error'),
+                        _("The comm_to_ps 'pdflatex' failed with error. Read logs."))
+                
             os.close(stderr_fd) # ensure flush before reading
             stderr_fd = None # avoid closing again in finally block
-
-            pdf_file = open(os.path.join(tmp_dir, pdf_filename), 'rb')
-            pdf = pdf_file.read()
-            pdf_file.close()
+            
+            ps_file = open(os.path.join(tmp_dir, ps_filename), 'rb')
+            ps = ps_file.read()
+            ps_file.close()
         except:
             raise osv.except_osv(_('Latex error'),
-                  _("The command 'pdflatex' failed with error. Read logs."))
+                  _("The command 'latex' failed with error. Read logs."))
         finally:
             if stderr_fd is not None:
                 os.close(stderr_fd)
@@ -172,7 +194,7 @@ class LatexParser(report_sxw):
                 #shutil.rmtree(tmp_dir)
             except (OSError, IOError), exc:
                 _logger.error('Cannot remove dir %s: %s', tmp_dir, exc)
-        return pdf
+        return ps
 
     def translate_call(self, src):
         """Translate String."""
