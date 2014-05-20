@@ -169,7 +169,7 @@ class LatexParser(report_sxw):
                 os.close(stderr_fd)
             try:
                 _logger.debug('Removing temporal directory: %s', tmp_dir)
-                shutil.rmtree(tmp_dir)
+                #shutil.rmtree(tmp_dir)
             except (OSError, IOError), exc:
                 _logger.error('Cannot remove dir %s: %s', tmp_dir, exc)
         return pdf
